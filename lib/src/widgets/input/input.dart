@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_chat_types/flutter_chat_types.dart' as types;
@@ -55,16 +56,27 @@ class _InputState extends State<Input> {
             }.contains(el),
           )) {
         if (event is KeyDownEvent) {
-          _handleSendPressed();
+          if (!kIsWeb) {
+            _handleSendPressed();
+          } else {
+            if (event.logicalKey != LogicalKeyboardKey.process) {
+              _handleSendPressed();
+            } else {
+              _handleTextControllerChange();
+            }
+          }
         }
         return KeyEventResult.handled;
       } else {
+        if (kIsWeb && event.logicalKey != LogicalKeyboardKey.process) {
+          _handleTextControllerChange();
+        }
         return KeyEventResult.ignored;
       }
     },
   );
 
-  bool _sendButtonVisible = false;
+  final _sendButtonVisible = ValueNotifier<bool>(false);
   late TextEditingController _textController;
 
   @override
@@ -77,16 +89,14 @@ class _InputState extends State<Input> {
   }
 
   void _handleSendButtonVisibilityModeChange() {
-    _textController.removeListener(_handleTextControllerChange);
     if (widget.options.sendButtonVisibilityMode ==
         SendButtonVisibilityMode.hidden) {
-      _sendButtonVisible = false;
+      _sendButtonVisible.value = false;
     } else if (widget.options.sendButtonVisibilityMode ==
         SendButtonVisibilityMode.editing) {
-      _sendButtonVisible = _textController.text.trim() != '';
-      _textController.addListener(_handleTextControllerChange);
+      _sendButtonVisible.value = _textController.text.trim() != '';
     } else {
-      _sendButtonVisible = true;
+      _sendButtonVisible.value = true;
     }
   }
 
@@ -98,14 +108,14 @@ class _InputState extends State<Input> {
 
       if (widget.options.inputClearMode == InputClearMode.always) {
         _textController.clear();
+        _sendButtonVisible.value = false;
       }
     }
   }
 
-  void _handleTextControllerChange() {
-    setState(() {
-      _sendButtonVisible = _textController.text.trim() != '';
-    });
+  Future<void> _handleTextControllerChange() async {
+    await Future.delayed(const Duration(milliseconds: 50));
+    _sendButtonVisible.value = _textController.text.trim() != '';
   }
 
   Widget _inputBuilder() {
@@ -130,7 +140,7 @@ class _InputState extends State<Input> {
           EdgeInsets.fromLTRB(
             widget.onAttachmentPressed != null ? 0 : 24,
             0,
-            _sendButtonVisible ? 0 : 24,
+            _sendButtonVisible.value ? 0 : 24,
             0,
           ),
         );
@@ -205,11 +215,14 @@ class _InputState extends State<Input> {
                   constraints: BoxConstraints(
                     minHeight: buttonPadding.bottom + buttonPadding.top + 24,
                   ),
-                  child: Visibility(
-                    visible: _sendButtonVisible,
-                    child: SendButton(
-                      onPressed: _handleSendPressed,
-                      padding: buttonPadding,
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: _sendButtonVisible,
+                    builder: (context, sendButtonVisible, child) => Visibility(
+                      visible: sendButtonVisible,
+                      child: SendButton(
+                        onPressed: _handleSendPressed,
+                        padding: buttonPadding,
+                      ),
                     ),
                   ),
                 ),
@@ -234,6 +247,7 @@ class _InputState extends State<Input> {
   void dispose() {
     _inputFocusNode.dispose();
     _textController.dispose();
+    _sendButtonVisible.dispose();
     super.dispose();
   }
 
